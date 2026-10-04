@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { ADDITION, Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
+import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
 import type { Piece } from '../core/resolve';
 import { primitiveGeometry } from './geometry';
 
 // Union / Negate preview, the same way Roblox's UnionAsync + SubtractAsync combine parts:
-// all solid shapes of a part are merged, then every cut shape is taken away.
+// every cut shape is taken away from the solid shapes of its part.
 // Results are cached by the exact shapes, so dragging another part never recomputes this one.
 
 const evaluator = new Evaluator();
@@ -20,14 +20,17 @@ export function piecesKey(pieces: Piece[]): string {
 }
 
 function brush(p: Piece): Brush {
-  const b = new Brush(primitiveGeometry(p.kind, p.size));
-  b.matrix.copy(p.m);
-  b.matrix.decompose(b.position, b.quaternion, b.scale);
+  // placement baked into its own copy: shared cached geometry with a matrix gave results in the wrong place
+  const b = new Brush(pieceGeometry(p));
   b.updateMatrixWorld(true);
   return b;
 }
 
-/** Car-space geometry of the solid shapes merged, minus the cut shapes. Null when there is nothing solid. */
+/**
+ * Car-space geometry of the solid shapes with the cut shapes taken away. Null when there is nothing solid.
+ * Overlapping solids look the same as their union, so solids are not merged with CSG (chained unions of
+ * touching boxes break on shared faces); each solid only has the cuts that reach it subtracted.
+ */
 export function unionGeometry(pieces: Piece[]): THREE.BufferGeometry | null {
   const adds = pieces.filter((p) => !p.cut);
   const cuts = pieces.filter((p) => p.cut);
@@ -35,22 +38,25 @@ export function unionGeometry(pieces: Piece[]): THREE.BufferGeometry | null {
   const key = piecesKey(pieces);
   const hit = cache.get(key);
   if (hit) return hit;
-  let g: THREE.BufferGeometry;
-  if (adds.length === 1 && !cuts.length) {
-    g = pieceGeometry(adds[0]);
-  } else {
-    // Evaluator results are in world (here: car) space.
-    let acc: Brush = brush(adds[0]);
-    let first = true;
-    try {
-      for (let i = 1; i < adds.length; i++) { acc = evaluator.evaluate(acc, brush(adds[i]), ADDITION) as Brush; first = false; }
-      for (const c of cuts) { acc = evaluator.evaluate(acc, brush(c), SUBTRACTION) as Brush; first = false; }
-    } catch (e) {
-      console.warn('Union preview failed', e);
+  const cutBoxes = cuts.map((c) => boxOf(c));
+  const parts: THREE.BufferGeometry[] = [];
+  for (const a of adds) {
+    const ab = boxOf(a);
+    const reach = cuts.filter((_, i) => cutBoxes[i].intersectsBox(ab));
+    let g = pieceGeometry(a);
+    if (reach.length) {
+      try {
+        let acc: Brush = brush(a);
+        for (const c of reach) acc = evaluator.evaluate(acc, brush(c), SUBTRACTION) as Brush;
+        g = acc.geometry.index ? acc.geometry.toNonIndexed() : acc.geometry.clone();
+      } catch (e) {
+        console.warn('Cut preview failed', e);
+      }
     }
-    g = first ? pieceGeometry(adds[0]) : acc.geometry.clone();
+    const pos = g.getAttribute('position');
+    if (pos && pos.count) parts.push(g);
   }
-  const out = g.index ? g.toNonIndexed() : g;
+  const out = mergeTris(parts);
   out.computeVertexNormals();
   out.computeBoundingBox();
   out.computeBoundingSphere();
@@ -60,6 +66,29 @@ export function unionGeometry(pieces: Piece[]): THREE.BufferGeometry | null {
     cache.get(first)?.dispose();
     cache.delete(first);
   }
+  return out;
+}
+
+function boxOf(p: Piece): THREE.Box3 {
+  const g = primitiveGeometry(p.kind, p.size);
+  return g.boundingBox!.clone().applyMatrix4(p.m).expandByScalar(0.001);
+}
+
+function mergeTris(list: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  let n = 0;
+  for (const g of list) n += g.getAttribute('position').count;
+  const arr = new Float32Array(n * 3);
+  let o = 0;
+  for (const g of list) {
+    const pos = g.getAttribute('position');
+    for (let i = 0; i < pos.count; i++, o += 3) {
+      arr[o] = pos.getX(i);
+      arr[o + 1] = pos.getY(i);
+      arr[o + 2] = pos.getZ(i);
+    }
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(arr, 3));
   return out;
 }
 

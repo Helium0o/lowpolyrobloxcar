@@ -86,17 +86,23 @@ function build(kind: Kind, [sx, sy, sz]: V3): THREE.BufferGeometry {
   }
 }
 
-/** Makes every triangle face away from the centre (all these shapes are convex and centred). */
+/** Makes every triangle face outwards. These shapes are convex, so the average of their corners is inside
+ * (the box centre is not: it lies on a wedge's slope). */
 function fixWinding(g: THREE.BufferGeometry): THREE.BufferGeometry {
   const p = g.getAttribute('position') as THREE.BufferAttribute;
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3(), m = new THREE.Vector3();
-  const box = new THREE.Box3().setFromBufferAttribute(p);
-  const centre = box.getCenter(new THREE.Vector3());
+  const corners = new Map<string, THREE.Vector3>();
+  for (let i = 0; i < p.count; i++) {
+    a.fromBufferAttribute(p, i);
+    corners.set(`${a.x.toFixed(5)},${a.y.toFixed(5)},${a.z.toFixed(5)}`, a.clone());
+  }
+  const inside = new THREE.Vector3();
+  for (const v of corners.values()) inside.add(v);
+  inside.divideScalar(corners.size);
   for (let i = 0; i < p.count; i += 3) {
     a.fromBufferAttribute(p, i); b.fromBufferAttribute(p, i + 1); c.fromBufferAttribute(p, i + 2);
     n.subVectors(b, a).cross(m.subVectors(c, a));
-    const mid = a.clone().add(b).add(c).divideScalar(3).sub(centre);
-    if (n.dot(mid) < 0) {
+    if (n.dot(m.subVectors(a, inside)) < 0) {
       p.setXYZ(i + 1, c.x, c.y, c.z);
       p.setXYZ(i + 2, b.x, b.y, b.z);
     }
