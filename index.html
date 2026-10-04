@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Low Poly Car Builder</title>
+  </head>
+  <body>
+    <div id="app">
+      <header id="top"></header>
+      <aside id="left">
+        <nav class="tabs"><button id="tab-parts">Parts</button><button id="tab-add">Add</button></nav>
+        <div id="outliner"></div>
+        <div id="library" hidden></div>
+      </aside>
+      <main id="view">
+        <div id="canvas-host"></div>
+        <div id="tools"></div>
+        <div id="crumb" hidden></div>
+      </main>
+      <aside id="props"></aside>
+      <footer id="status"></footer>
+    </div>
+    <div id="toast"></div>
+    <div id="modal"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
