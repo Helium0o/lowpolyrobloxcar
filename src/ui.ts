@@ -1,5 +1,6 @@
 import { buildPart } from './build';
 import { CAR_TRI_TARGET, exportFiles, robloxCheck, visibleParts, type ExportChoice } from './export';
+import { customPart, customParts, GAME_CAT_NAMES, GAME_CATS, gameCatOf, type GameCat } from './customparts';
 import { openTextFile, saveFile, saveFiles } from './io';
 import { ROLE_LABELS, ROLES, SHAPE_LABELS, SHAPE_TYPES, cloneCar, safeName, uid, type Car, type Effects, type Part, type Role, type Shape, type ShapeType, type SlotId, type Vec3 } from './model';
 import type { Store } from './store';
@@ -429,6 +430,11 @@ export class UI {
         h('h3', {}, 'Part'),
         this.textRow('Name', part.name, (v) => editPart((p) => (p.name = safeName(v)))),
         h('div', { class: 'kv' }, h('label', {}, 'Slot'), h('span', {}, part.slot === 'custom' ? 'Custom' : part.slot === 'wheel' ? 'Wheel' : SLOT_NAMES[part.slot])),
+        part.slot === 'custom'
+          ? h('div', { class: 'kv' }, h('label', {}, 'Game slot'), h('select', { onchange: (e: Event) => editPart((p) => { const v = (e.target as HTMLSelectElement).value; p.gameSlot = v ? v as GameCat : undefined; }) },
+            h('option', { value: '', selected: !part.gameSlot }, 'Pick one…'),
+            ...GAME_CATS.map((c) => h('option', { value: c, selected: part.gameSlot === c }, GAME_CAT_NAMES[c]))))
+          : h('div', { class: 'kv' }, h('label', {}, 'In game'), h('span', {}, (() => { const c = gameCatOf(part); return c ? GAME_CAT_NAMES[c] : 'FBX only'; })())),
         this.vecRow('Pivot', part.pivot, 0.05, (v) => editPart((p) => (p.pivot = v), 'pivot')),
         h('p', { class: 'note' }, 'The pivot is the mount point. It becomes the mesh pivot in Roblox.'),
         h('div', { class: 'btns' },
@@ -610,37 +616,68 @@ export class UI {
     }
   }
 
-  private exportOpts = { parts: true, wholeCar: false, settings: true, recipes: true, whitePaint: false, scale: 1 };
+  private exportOpts = { game: true, parts: false, wholeCar: false, settings: true, recipes: false, whitePaint: false, scale: 1, price: 100, level: 1, currency: 'coins' as 'coins' | 'score' };
+  private exportSkip = new Set<string>();
+  private exportSeen = new Set<string>();
 
   private exportDialog() {
     const o = this.exportOpts;
+    const car = this.store.car;
     const check = (key: keyof typeof o, label: string, help: string) =>
       h('label', { class: 'opt' }, h('input', { type: 'checkbox', checked: !!o[key], onchange: (e: Event) => ((o as Record<string, unknown>)[key] = (e.target as HTMLInputElement).checked) }), h('b', {}, label), h('small', {}, help));
-    const issues = robloxCheck(this.store.car, visibleParts(this.store.car));
+    const issues = robloxCheck(car, visibleParts(car));
+    const game = customParts(car, car.parts.filter((p) => !p.hidden));
+    // Stock template parts start unticked so they don't fill the shop; everything else starts ticked.
+    for (const r of game) if (!this.exportSeen.has(r.part.id)) { this.exportSeen.add(r.part.id); if (r.part.variant === 'stock') this.exportSkip.add(r.part.id); }
+    const num = (label: string, value: number, set: (v: number) => void, help = '') =>
+      h('div', { class: 'kv' }, h('label', {}, label), h('input', { type: 'number', step: 1, min: 0, value, onchange: (e: Event) => set(Math.max(0, Math.round(Number((e.target as HTMLInputElement).value) || 0))) }), h('small', {}, help));
+    const gameRows = game.map((r) => {
+      const ok = !!r.data;
+      const key = r.part.id;
+      return h('label', { class: 'opt gamepart' + (ok ? '' : ' off') },
+        h('input', { type: 'checkbox', disabled: !ok, checked: ok && !this.exportSkip.has(key), onchange: (e: Event) => ((e.target as HTMLInputElement).checked ? this.exportSkip.delete(key) : this.exportSkip.add(key)) }),
+        h('b', {}, ok ? `${r.data!.name}` : r.part.name, h('small', {}, ok ? `  ${GAME_CAT_NAMES[r.data!.cat]} · ${r.data!.p.length} block${r.data!.p.length === 1 ? '' : 's'} · ${r.id}` : '')),
+        r.notes.length ? h('small', {}, r.notes.join(' ')) : null);
+    });
     this.modal('Export for Roblox',
       h('ul', { class: 'issues' }, ...issues.map((i) => h('li', { class: i.level }, i.text))),
+      h('div', { class: 'sub' }, 'For your game'),
+      check('game', 'Game parts (recommended)', '_CustomParts.lua: paste it into the Studio command bar. Each ticked part joins ReplicatedStorage.CustomParts and shows up in the Customs shop, fitted to every car.'),
+      h('div', { class: 'gameparts' }, ...gameRows),
+      h('div', { class: 'row3' },
+        num('Price', o.price, (v) => (o.price = v)),
+        h('div', { class: 'kv' }, h('label', {}, 'Currency'), h('select', { onchange: (e: Event) => (o.currency = (e.target as HTMLSelectElement).value as 'coins' | 'score') },
+          ...(['coins', 'score'] as const).map((c) => h('option', { value: c, selected: o.currency === c }, c)))),
+        num('Level', o.level, (v) => (o.level = Math.max(1, v)))),
+      check('settings', 'Car settings', '_Settings.rbxmx and .json: rim, exhaust, colours, aura, underglow, boost and the effect attachments.'),
+      h('div', { class: 'sub' }, 'Mesh files (optional)'),
       check('parts', 'One .fbx per part', 'Hood_Vented.fbx, WheelFL.fbx… Each keeps its mount point as pivot.'),
       check('wholeCar', 'Whole car .fbx', 'Every part in one file, grouped by part.'),
-      check('settings', 'Settings for your game', '_Settings.rbxmx and .json: rim, exhaust, colours, aura, underglow, boost and the effect attachments.'),
-      check('recipes', 'WorkshopRecipe shape lists', '_Recipes.json: each part as adds/cuts of Blocks, Wedges and Cylinders.'),
+      check('recipes', 'WorkshopRecipe shape lists', '_Recipes.json: each part as adds/cuts of Blocks, Wedges and Cylinders in car space.'),
       check('whitePaint', 'White paint meshes', 'Write paint meshes white so you colour them in Roblox.'),
       h('div', { class: 'kv' }, h('label', {}, 'Scale'), h('input', { type: 'number', step: 0.1, value: o.scale, onchange: (e: Event) => (o.scale = Number((e.target as HTMLInputElement).value) || 1) }), h('small', {}, '1 = 1 stud')),
-      h('p', { class: 'note' }, 'In Roblox Studio: Import 3D, pick the .fbx files, and keep "Merge meshes" off.'),
       h('div', { class: 'btns' }, h('button', { class: 'tb primary', onclick: async () => {
-        const choice: ExportChoice = { parts: o.parts, wholeCar: o.wholeCar, settings: o.settings, recipes: o.recipes };
-        const files = exportFiles(this.store.car, choice, { scale: o.scale, whitePaint: o.whitePaint });
+        const choice: ExportChoice = {
+          game: o.game, skip: [...this.exportSkip], shop: { price: o.price, currency: o.currency, level: Math.max(1, o.level) },
+          parts: o.parts, wholeCar: o.wholeCar, settings: o.settings, recipes: o.recipes,
+        };
+        const files = exportFiles(car, choice, { scale: o.scale, whitePaint: o.whitePaint });
         if (!files.length) return this.toast('Nothing selected to export');
         this.closeModal();
-        const where = await saveFiles(safeName(this.store.car.name), files);
+        const where = await saveFiles(safeName(car.name), files);
         if (where) this.toast(`Exported ${files.length} files to ${where}`);
       } }, 'Export')),
     );
   }
 
   private async exportPart(part: Part) {
-    const files = exportFiles(this.store.car, { parts: true, wholeCar: false, settings: false, recipes: false }, { scale: this.exportOpts.scale, whitePaint: this.exportOpts.whitePaint }, part);
-    const where = await saveFile(files[0].name, files[0].data);
-    if (where) this.toast(`Exported ${files[0].name}`);
+    const o = this.exportOpts;
+    const game = !!customPart(this.store.car, part).data;
+    const files = exportFiles(this.store.car, { game, shop: { price: o.price, currency: o.currency, level: Math.max(1, o.level) }, parts: !game, wholeCar: false, settings: false, recipes: false },
+      { scale: o.scale, whitePaint: o.whitePaint }, part);
+    if (!files.length) return this.toast('Nothing to export in this part');
+    const where = files.length === 1 ? await saveFile(files[0].name, files[0].data) : await saveFiles(safeName(part.name), files);
+    if (where) this.toast(game ? `Exported ${files[0].name}: paste it into the Studio command bar` : `Exported ${files[0].name}`);
   }
 
   // ---------- modal / toast ----------

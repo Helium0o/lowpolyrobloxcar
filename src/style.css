@@ -164,3 +164,10 @@ input[type='color'] { width: 38px; height: 26px; border: 1px solid var(--line); 
 @media (max-width: 1100px) {
   #app { grid-template-columns: 260px 1fr 240px; }
 }
+.gameparts { max-height: 220px; overflow-y: auto; border: 1px solid var(--line, #eee); border-radius: 10px; padding: 2px 8px; margin: 4px 0 8px; }
+.gameparts .opt { margin: 6px 0; }
+.gameparts .opt b small { font-weight: 400; color: var(--muted); }
+.gameparts .off { opacity: 0.6; }
+.row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.row3 .kv { grid-template-columns: auto 1fr; }
+.row3 input, .row3 select { width: 100%; min-width: 0; }

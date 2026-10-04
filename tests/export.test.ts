@@ -9,7 +9,7 @@ describe('export', () => {
   applyChoice(car, 'spoiler', 'gt');
   applyChoice(car, 'exhaust', 'quad');
   car.effects.aura.style = 'sparkles';
-  const files = exportFiles(car, { parts: true, wholeCar: true, settings: true, recipes: true }, { scale: 1, whitePaint: false });
+  const files = exportFiles(car, { game: true, parts: true, wholeCar: true, settings: true, recipes: true }, { scale: 1, whitePaint: false });
 
   it('writes one fbx per part plus car, settings and recipes', () => {
     const names = files.map((f) => f.name);

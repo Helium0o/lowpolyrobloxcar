@@ -1,8 +1,8 @@
 # Low Poly Car Builder
 
 A small Windows app for building low poly Roblox cars and swappable parts (bumpers, hoods,
-spoilers, extras, lights, rims, tyres, exhausts) out of simple shapes, and exporting them as
-`.fbx` for Roblox Studio.
+spoilers, extras, lights, rims, tyres, exhausts) out of simple shapes, and exporting them
+straight into the game's `ReplicatedStorage.CustomParts` (with `.fbx` as an optional extra).
 
 ## Download
 
@@ -33,13 +33,33 @@ Both use Windows' built-in WebView2 (already on Windows 10 and 11).
 
 | File | What it is |
 |---|---|
-| `<Part>.fbx` | One file per part (e.g. `Hood_Vented.fbx`, `WheelFL.fbx`). Meshes keep the part's mount point as pivot. Up to five meshes per part: paint (tintable), `_Tyre`, `_Trim` / `_Rim` (vertex coloured details), `_Glass`, `_Lights` (set these to Neon). |
-| `<Car>.fbx` | Optional: the whole car, one group per part. |
-| `<Car>_Settings.rbxmx` / `.json` | Settings the game reads: `RimStyle`, `RimFinish`, `ExhaustLayout`, `ExhaustShape`, `ExhaustFinish`, `WheelRadius`, `RoofHeight`, colours, `Aura`, `UnderglowEnabled`, `BoostTrail`, and effect attachments (`HeadLampL/R`, `RearLamp`, `Exhaust`, `TipFx`, `Underglow`, `Aura`). Positions are relative to the ground centre of the car, front facing -Z. |
-| `<Car>_Recipes.json` | Each part as a `WorkshopRecipe` (adds and cuts of Blocks, Wedges, Cylinders and Balls). Shapes Roblox parts can't express exactly are marked `"approx": true`. |
+| `<Car>_CustomParts.lua` | **Main export.** Paste it into the Roblox Studio command bar (View > Command Bar) in edit mode and press Enter. It adds one `StringValue` per ticked part to `ReplicatedStorage.CustomParts` (replacing parts with the same id), updates the folder's `Count`, and adds an undo point. Play the game and the parts are in the Customs shop, fitted to every car. |
+| `<Car>_CustomParts.json` | The same parts as `{"cp_<name>": "<StringValue text>"}`. |
+| `<Car>_Settings.rbxmx` / `.json` | Settings the game reads: `RimStyle`, `RimFinish`, `ExhaustLayout`, `ExhaustShape`, `ExhaustFinish`, `WheelRadius`, `RoofHeight`, colours, `Aura`, `UnderglowEnabled`, `BoostTrail`, and effect attachments (`HeadLampL/R`, `RearLamp`, `Exhaust`, `TipFx`, `Underglow`, `Aura`). |
+| `<Part>.fbx`, `<Car>.fbx` | Optional meshes: one file per part, or the whole car. |
+| `<Car>_Recipes.json` | Optional: each part as a car-space `WorkshopRecipe` (adds and cuts). |
 
-Units are studs (1 unit = 1 stud) and Y is up. In Roblox Studio use **Import 3D**, keep
-**Merge meshes** off, and check the first import against a 1-stud part to confirm the scale.
+How parts map to the game's CustomParts format (`Kit.customFrames` / `Kit.fitRow` in `ShopCatalog`):
+
+- Each part is written in its slot's frame with `ref` set to this car's measurements, so the game
+  stretches it to each car. Game slot ids: `frontBumper`, `rearBumper`, `sideSkirts`, `spoiler`, `hood`,
+  `headlights`, `taillights`, `hoodExtra`, `roofExtra`, `sideExtra`, `frontExtra`, `rearExtra`,
+  `trunkExtra`, `exhaust` (a tip shape plus `layout`) and `rims` (rim frame, `ref = {W, T}`, `finish`).
+- Side skirts and lamps store the left side only; the game mirrors the right side.
+- Colours become game roles: body paint `paint`, black trim `black`, chrome `chrome`, headlight
+  `head`, taillight `tail`, lamp glass `lens`; rims use `face` / `lip` / `barrel`, tips `body` / `lip` /
+  `soot`. Accent, window tint and underglow colours are written as `custom` rows with their own colour.
+- Shapes become Block, Wedge, Cylinder or Ball. Corner wedges, chamfered and tapered boxes, cones and
+  half cylinders are approximated, and holes are left out (game parts have no cuts); the export
+  dialog says which.
+- The body, exhaust pipes and tyres stay the game car's own, so they only go out as FBX. A free-form
+  part needs a **Game slot** (inspector) to export.
+- Ids are `cp_<part name>`. Price, currency and level are set in the export dialog.
+
+`tests/gameloader.ts` is a port of the game's loader maths; the tests place every exported template
+part with it and check it lands where it was drawn.
+
+FBX: units are studs and Y is up. In Roblox Studio use **Import 3D** and keep **Merge meshes** off.
 
 ## GPU use
 
@@ -60,5 +80,5 @@ npx tauri build      # Windows exe + installer (on Windows)
 
 Code map: `src/model.ts` data model, `src/shapes.ts` shape geometry, `src/build.ts` part
 meshes and cuts, `src/templates.ts` bodies and slot parts, `src/fbx.ts` binary FBX writer,
-`src/export.ts` export files and the Roblox check, `src/viewport.ts` 3D view, `src/ui.ts`
+`src/customparts.ts` the game's CustomParts format, `src/export.ts` export files and the Roblox check, `src/viewport.ts` 3D view, `src/ui.ts`
 panels, `src-tauri/` desktop shell.

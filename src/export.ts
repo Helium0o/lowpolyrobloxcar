@@ -4,8 +4,11 @@ import { writeFbx, type FbxNode } from './fbx';
 import { ROLES, safeName, type Car, type Part, type Role, type Shape } from './model';
 import { hasMirrorCopy } from './shapes';
 import { baseSpec, exhaustOutlets, makeCtx } from './templates';
+import { customParts, studioScript } from './customparts';
 
 // Everything the app writes for Roblox:
+//   <Car>_CustomParts.lua  (main export) command bar script that adds the parts to ReplicatedStorage.CustomParts
+//   <Car>_CustomParts.json the same parts as {id: StringValue text}, see customparts.ts
 //   <Part>.fbx            one file per part (LAS's game swaps parts individually)
 //   <Car>.fbx             optional whole car, one named group per part
 //   <Car>_Settings.rbxmx  attributes + effect attachments the game reads to spawn aura, underglow, boost
@@ -335,6 +338,11 @@ export function partRecipe(car: Car, part: Part, name: string): PartRecipe {
 // ---------- the whole export ----------
 
 export interface ExportChoice {
+  /** The game's own CustomParts JSON (primary export). */
+  game: boolean;
+  /** Game export: part ids to leave out, and the shop price / level every exported part gets. */
+  skip?: string[];
+  shop?: { price: number; currency: 'coins' | 'score'; level: number };
   parts: boolean;
   wholeCar: boolean;
   settings: boolean;
@@ -346,7 +354,19 @@ export function exportFiles(car: Car, choice: ExportChoice, opts: ExportOptions,
   const names = uniqueNames(built);
   const carName = safeName(car.name);
   const files: OutFile[] = [];
-  if (choice.parts || only) for (const bp of built) files.push({ name: `${names.get(bp)}.fbx`, data: partFbx(car, bp, opts) });
+  if (choice.game) {
+    const skip = new Set(choice.skip ?? []);
+    const list = customParts(car, built.map((bp) => bp.part).filter((p) => !skip.has(p.id))).filter((r) => r.data);
+    if (choice.shop) for (const r of list) Object.assign(r.data!, choice.shop);
+    if (list.length) {
+      const base = only ? list[0].id : `${carName}_CustomParts`;
+      files.push({ name: `${base}.lua`, data: enc.encode(studioScript(list)) });
+      const map: Record<string, string> = {};
+      for (const r of list) map[r.id] = JSON.stringify(r.data);
+      files.push({ name: `${base}.json`, data: enc.encode(JSON.stringify(map, null, 1)) });
+    }
+  }
+  if (choice.parts || (only && !choice.game)) for (const bp of built) files.push({ name: `${names.get(bp)}.fbx`, data: partFbx(car, bp, opts) });
   if (choice.wholeCar && !only) files.push({ name: `${carName}.fbx`, data: carFbx(car, built, opts) });
   const recipes = choice.recipes ? built.map((bp) => partRecipe(car, bp.part, names.get(bp)!)) : [];
   if (choice.recipes) files.push({ name: `${only ? names.get(built[0]) : carName}_Recipes.json`, data: enc.encode(JSON.stringify(recipes, null, 1)) });

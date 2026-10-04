@@ -110,6 +110,8 @@ export interface Part {
   shapes: Shape[];
   hidden?: boolean;
   locked?: boolean;
+  /** Free-form parts: which slot of LAS's game they export to (game id, e.g. "roofExtra"). */
+  gameSlot?: import('./customparts').GameCat;
 }
 
 export interface WheelSettings {
