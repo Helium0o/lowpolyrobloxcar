@@ -616,7 +616,7 @@ export class UI {
     }
   }
 
-  private exportOpts = { game: true, parts: false, wholeCar: false, settings: true, recipes: false, whitePaint: false, scale: 1, price: 100, level: 1, currency: 'coins' as 'coins' | 'score' };
+  private exportOpts = { game: true, parts: true, wholeCar: false, settings: true, recipes: true, whitePaint: false, scale: 1, price: 100, level: 1, currency: 'coins' as 'coins' | 'score' };
   private exportSkip = new Set<string>();
   private exportSeen = new Set<string>();
 
